@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -40,13 +42,88 @@ var tasks = map[string]Task{
 }
 
 // Ниже напишите обработчики для каждого эндпоинта
-// ...
+// Обработчик получения всех задач
+func getAllTasks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var taskList []Task
+	for _, task := range tasks {
+		taskList = append(taskList, task)
+	}
+
+	if err := json.NewEncoder(w).Encode(taskList); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// Обработчик добавления новой задачи
+func addTask(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var newTask Task
+	if err := json.NewDecoder(r.Body).Decode(&newTask); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	// Генерируем новый ID (увеличиваем на 1)
+	newID := strconv.Itoa(len(tasks) + 1)
+	newTask.ID = newID
+	tasks[newID] = newTask
+
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(newTask); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+// Обработчик получения задачи по ID
+func getTaskByID(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	id := chi.URLParam(r, "id")
+	task, exists := tasks[id]
+	if !exists {
+		http.Error(w, "Bad Request: Task not found", http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(task); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+// Обработчик удаления задачи по ID
+func deleteTaskByID(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	id := chi.URLParam(r, "id")
+	_, exists := tasks[id]
+	if !exists {
+		http.Error(w, "Bad Request: Task not found", http.StatusBadRequest)
+		return
+	}
+
+	delete(tasks, id)
+
+	w.WriteHeader(http.StatusOK)
+	response := map[string]string{"message": "Task deleted successfully"}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
 
 func main() {
 	r := chi.NewRouter()
 
-	// здесь регистрируйте ваши обработчики
-	// ...
+	r.Get("/tasks", getAllTasks)
+	r.Post("/tasks", addTask)
+	r.Get("/tasks/{id}", getTaskByID)
+	r.Delete("/tasks/{id}", deleteTaskByID)
 
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		fmt.Printf("Ошибка при запуске сервера: %s", err.Error())
