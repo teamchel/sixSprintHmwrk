@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -17,6 +16,7 @@ type Task struct {
 	Applications []string `json:"applications"`
 }
 
+// Глобальная мапа для хранения задач
 var tasks = map[string]Task{
 	"1": {
 		ID:          "1",
@@ -41,7 +41,6 @@ var tasks = map[string]Task{
 	},
 }
 
-// Ниже напишите обработчики для каждого эндпоинта
 // Обработчик получения всех задач
 func getAllTasks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -65,19 +64,24 @@ func addTask(w http.ResponseWriter, r *http.Request) {
 
 	var newTask Task
 	if err := json.NewDecoder(r.Body).Decode(&newTask); err != nil {
-		http.Error(w, "Bad Request", http.StatusBadRequest)
+		http.Error(w, "Bad Request: Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	// Генерируем новый ID (увеличиваем на 1)
-	newID := strconv.Itoa(len(tasks) + 1)
-	newTask.ID = newID
-	tasks[newID] = newTask
-
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(newTask); err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	// Проверка наличия ID
+	if newTask.ID == "" {
+		http.Error(w, "Bad Request: Task must have an ID", http.StatusBadRequest)
+		return
 	}
+
+	// Проверка уникальности ID
+	if _, exists := tasks[newTask.ID]; exists {
+		http.Error(w, "Bad Request: Task with this ID already exists", http.StatusBadRequest)
+		return
+	}
+
+	tasks[newTask.ID] = newTask
+	w.WriteHeader(http.StatusCreated)
 }
 
 // Обработчик получения задачи по ID
@@ -99,8 +103,6 @@ func getTaskByID(w http.ResponseWriter, r *http.Request) {
 
 // Обработчик удаления задачи по ID
 func deleteTaskByID(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	id := chi.URLParam(r, "id")
 	_, exists := tasks[id]
 	if !exists {
@@ -110,21 +112,20 @@ func deleteTaskByID(w http.ResponseWriter, r *http.Request) {
 
 	delete(tasks, id)
 
+	// Возвращаем только статус 200 OK
 	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "Task deleted successfully"}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-	}
 }
 
 func main() {
 	r := chi.NewRouter()
 
-	r.Get("/tasks", getAllTasks)
-	r.Post("/tasks", addTask)
-	r.Get("/tasks/{id}", getTaskByID)
-	r.Delete("/tasks/{id}", deleteTaskByID)
+	// Регистрируем обработчики
+	r.Get("/tasks", getAllTasks)            // Получение всех задач
+	r.Post("/tasks", addTask)               // Добавление новой задачи
+	r.Get("/tasks/{id}", getTaskByID)       // Получение задачи по ID
+	r.Delete("/tasks/{id}", deleteTaskByID) // Удаление задачи по ID
 
+	// Запуск сервера
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		fmt.Printf("Ошибка при запуске сервера: %s", err.Error())
 		return
